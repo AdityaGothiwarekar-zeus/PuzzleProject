@@ -1,15 +1,19 @@
-import React, { useState, useRef, useEffect } from "react";
+// Components/DraggableShape.jsx
+import React, { useState, useRef } from "react";
 import { RotateCw } from "lucide-react";
 
 export default function DraggableShape({
   type,
   position,
   onMouseDown,
+  onDoubleClick,
   imageSrc,
   rotation = 0,
   onRotateStart,
   onRotateMove,
   onRotateEnd,
+  animate = false,
+  isSelected = false,
 }) {
   const [hovered, setHovered] = useState(false);
   const shapeRef = useRef(null);
@@ -40,36 +44,67 @@ export default function DraggableShape({
     window.addEventListener("mouseup", handleMouseUp);
   };
 
+  const handleMouseDown = (e) => {
+    // Prevent drag on double-click
+    if (e.detail === 2) {
+      e.preventDefault();
+      return;
+    }
+    // Call the parent's onMouseDown handler to start dragging
+    if (onMouseDown) {
+      onMouseDown(e);
+    }
+  };
+
+  const handleDoubleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Use requestAnimationFrame for immediate response
+    requestAnimationFrame(() => {
+      if (onDoubleClick) {
+        onDoubleClick(e);
+      }
+    });
+  };
+
   return (
     <div
       ref={shapeRef}
-      className="shape-wrapper"
+      className={`shape-wrapper ${animate ? 'animate' : ''}`}
       style={{
         position: "absolute",
         left: position.x,
         top: position.y,
-        transform: "rotate(" + rotation + "deg)",
+        transform: `rotate(${rotation}deg)`,
         transformOrigin: "center center",
         width: "100px",
         height: "100px",
+        border: isSelected ? "3px solid #007bff" : "2px solid transparent",
+        borderRadius: "8px",
+        boxShadow: isSelected ? "0 0 10px rgba(0, 123, 255, 0.5)" : "none",
+        transition: "border 0.1s ease, box-shadow 0.1s ease", // Faster transitions
+        cursor: isSelected ? "pointer" : "grab",
+        willChange: "transform", // Optimize for animations
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onMouseDown={handleMouseDown}  // Add this back to the wrapper div
+      onDoubleClick={handleDoubleClick}
     >
       <img
         src={imageSrc}
         alt={`Draggable ${type}`}
         style={{
-          width: "100px",
-          height: "100px",
-          cursor: "grab",
+          width: "100%",
+          height: "100%",
           userSelect: "none",
+          pointerEvents: "none",
+          opacity: isSelected ? 0.9 : 1,
         }}
-        onMouseDown={onMouseDown}
         draggable={false}
       />
 
-      {hovered && (
+      {(hovered || isSelected) && (
         <div
           className="rotate-icon"
           onMouseDown={handleRotateMouseDown}

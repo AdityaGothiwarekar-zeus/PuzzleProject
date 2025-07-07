@@ -1,6 +1,8 @@
-import React, { useState, useRef, useEffect } from "react";
+// App.js
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Canvas from "./Components/Canvas.jsx";
 import DraggableShape from "./Components/DraggableShape.jsx";
+import TapPlacementHandler from "./TapPlacementHandler.jsx";
 import "./App.css";
 import { getParallelogramPath, getTrianglePath } from "./Utils.js";
 
@@ -20,8 +22,11 @@ export default function App() {
   const [rotationParallelogram, setRotationParallelogram] = useState(0);
   const [rotationTriangle, setRotationTriangle] = useState(0);
 
+  const [selectedShape, setSelectedShape] = useState(null);
+
   const canvasRef = useRef(null);
   const rotateDataRef = useRef({ shape: null, center: null, startAngle: 0 });
+  const dragDataRef = useRef({ isDragging: false, shape: null, offset: { x: 0, y: 0 } });
 
   const CORRECT_ROTATION_PARALLELOGRAM = 0;
   const CORRECT_ROTATION_TRIANGLE = 0;
@@ -57,55 +62,82 @@ export default function App() {
   };
 
   const handleMouseDown = (shape) => (e) => {
+    // Don't start dragging if shape is already dropped
     if (
       (shape === "parallelogram" && isParallelogramDropped) ||
       (shape === "triangle" && isTriangleDropped)
     )
       return;
 
-    const currentPos =
-      shape === "parallelogram" ? posParallelogram : posTriangle;
+    // Don't start dragging on double-click
+    if (e.detail === 2) return;
 
-    setDraggingShape(shape);
-    setDragStart({
-      x: e.pageX - currentPos.x,
-      y: e.pageY - currentPos.y,
-    });
-  };
+    const currentPos = shape === "parallelogram" ? posParallelogram : posTriangle;
 
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (!draggingShape) return;
-
-      const newPos = {
-        x: e.pageX - dragStart.x,
-        y: e.pageY - dragStart.y,
-      };
-
-      if (draggingShape === "parallelogram") {
-        setPosParallelogram(newPos);
-      } else if (draggingShape === "triangle") {
-        setPosTriangle(newPos);
+    // Store drag data in ref for better performance
+    dragDataRef.current = {
+      isDragging: true,
+      shape,
+      offset: {
+        x: e.pageX - currentPos.x,
+        y: e.pageY - currentPos.y,
       }
     };
 
-    const handleMouseUp = (e) => {
-      if (!draggingShape) return;
+    setDraggingShape(shape);
+  };
 
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+  const handleDoubleClick = (shape) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Use requestAnimationFrame for immediate response
+    requestAnimationFrame(() => {
+      if (selectedShape === shape) {
+        setSelectedShape(null);
+      } else {
+        setSelectedShape(shape);
+      }
+    });
+  };
 
+  // Optimized mouse handlers using useCallback
+  const handleMouseMove = useCallback((e) => {
+    if (!dragDataRef.current.isDragging) return;
+
+    const { shape, offset } = dragDataRef.current;
+    const newPos = {
+      x: e.pageX - offset.x,
+      y: e.pageY - offset.y,
+    };
+
+    // Use requestAnimationFrame for smooth animation
+    requestAnimationFrame(() => {
+      if (shape === "parallelogram") {
+        setPosParallelogram(newPos);
+      } else if (shape === "triangle") {
+        setPosTriangle(newPos);
+      }
+    });
+  }, []);
+
+  const handleMouseUp = useCallback((e) => {
+    if (!dragDataRef.current.isDragging) return;
+
+    const { shape } = dragDataRef.current;
+    const canvas = canvasRef.current;
+    
+    if (canvas) {
       const rect = canvas.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
-
       const ctx = canvas.getContext("2d");
       const offsetY = 40;
 
-        if (draggingShape === "parallelogram") {
-      const path = getParallelogramPath(offsetY);
-      const isInside = ctx.isPointInPath(path, mouseX, mouseY);
-      const isCorrectRotation = Math.abs(rotationParallelogram - CORRECT_ROTATION_PARALLELOGRAM) <= ROTATION_TOLERANCE;
+      if (shape === "parallelogram") {
+        const path = getParallelogramPath(offsetY);
+        const isInside = ctx.isPointInPath(path, mouseX, mouseY);
+        const isCorrectRotation = Math.abs(rotationParallelogram - CORRECT_ROTATION_PARALLELOGRAM) <= ROTATION_TOLERANCE;
 
         if (isInside && isCorrectRotation) {
           setIsParallelogramDropped(true);
@@ -114,28 +146,36 @@ export default function App() {
         }
       }
 
-        if (draggingShape === "triangle") {
-          const path = getTrianglePath(offsetY);
-          const isInside = ctx.isPointInPath(path, mouseX, mouseY);
-          const isCorrectRotation = Math.abs(rotationTriangle - CORRECT_ROTATION_TRIANGLE) <= ROTATION_TOLERANCE;
+      if (shape === "triangle") {
+        const path = getTrianglePath(offsetY);
+        const isInside = ctx.isPointInPath(path, mouseX, mouseY);
+        const isCorrectRotation = Math.abs(rotationTriangle - CORRECT_ROTATION_TRIANGLE) <= ROTATION_TOLERANCE;
 
-          if (isInside && isCorrectRotation) {
-            setIsTriangleDropped(true);
-            setAnimateTriangle(true);
-            setPosTriangle({ x: rect.left + 80, y: rect.top + 70 });
-          }
-}
+        if (isInside && isCorrectRotation) {
+          setIsTriangleDropped(true);
+          setAnimateTriangle(true);
+          setPosTriangle({ x: rect.left + 80, y: rect.top + 70 });
+        }
+      }
+    }
 
-      setDraggingShape(null);
-    };
+    // Reset drag state
+    dragDataRef.current = { isDragging: false, shape: null, offset: { x: 0, y: 0 } };
+    setDraggingShape(null);
+  }, [rotationParallelogram, rotationTriangle]);
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [draggingShape, dragStart, rotationParallelogram, rotationTriangle]);
+  // Optimized useEffect with minimal dependencies
+  useEffect(() => {
+    if (draggingShape) {
+      window.addEventListener("mousemove", handleMouseMove, { passive: true });
+      window.addEventListener("mouseup", handleMouseUp);
+      
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [draggingShape, handleMouseMove, handleMouseUp]);
 
   return (
     <div className="container">
@@ -150,12 +190,14 @@ export default function App() {
           type="parallelogram"
           position={posParallelogram}
           onMouseDown={handleMouseDown("parallelogram")}
+          onDoubleClick={handleDoubleClick("parallelogram")}
           imageSrc="/pb_s5/parallelogram.svg"
           rotation={rotationParallelogram}
           onRotateStart={handleRotateStart("parallelogram")}
           onRotateMove={handleRotateMove}
           onRotateEnd={handleRotateEnd}
           animate={animateParallelogram}
+          isSelected={selectedShape === "parallelogram"}
         />
       )}
 
@@ -164,14 +206,35 @@ export default function App() {
           type="triangle"
           position={posTriangle}
           onMouseDown={handleMouseDown("triangle")}
+          onDoubleClick={handleDoubleClick("triangle")}
           imageSrc="/pb_s5/triangle-_active.svg"
           rotation={rotationTriangle}
           onRotateStart={handleRotateStart("triangle")}
           onRotateMove={handleRotateMove}
           onRotateEnd={handleRotateEnd}
           animate={animateTriangle}
+          isSelected={selectedShape === "triangle"}
         />
       )}
+
+      <TapPlacementHandler
+        canvasRef={canvasRef}
+        selectedShape={selectedShape}
+        setSelectedShape={setSelectedShape}
+        setPosParallelogram={setPosParallelogram}
+        setPosTriangle={setPosTriangle}
+        isParallelogramDropped={isParallelogramDropped}
+        isTriangleDropped={isTriangleDropped}
+        rotationParallelogram={rotationParallelogram}
+        rotationTriangle={rotationTriangle}
+        setIsParallelogramDropped={setIsParallelogramDropped}
+        setIsTriangleDropped={setIsTriangleDropped}
+        setAnimateParallelogram={setAnimateParallelogram}
+        setAnimateTriangle={setAnimateTriangle}
+        CORRECT_ROTATION_PARALLELOGRAM={CORRECT_ROTATION_PARALLELOGRAM}
+        CORRECT_ROTATION_TRIANGLE={CORRECT_ROTATION_TRIANGLE}
+        ROTATION_TOLERANCE={ROTATION_TOLERANCE}
+      />
     </div>
   );
 }

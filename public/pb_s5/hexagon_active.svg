@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="137" height="121" viewBox="0 0 137 121">
+  <defs>
+    <filter id="Path_584094" x="0" y="0.336" width="137" height="120.664" filterUnits="userSpaceOnUse">
+      <feOffset dy="6" input="SourceAlpha" />
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feFlood flood-opacity="0.502" />
+      <feComposite operator="in" in2="blur" />
+      <feComposite in="SourceGraphic" />
+    </filter>
+  </defs>
+  <g id="hexagon_active" transform="translate(-0.004)">
+    <g transform="matrix(1, 0, 0, 1, 0, 0)" filter="url(#Path_584094)">
+      <path
+        id="Path_584094-2"
+        data-name="Path 584094"
+        d="M 100 1 L 130 54 l -31 54 l -62 -1 L 7 55 L 38 1 Z"
+        transform="translate(0 0.01)"
+        fill="#ffef01"
+      />
+    </g>
+    <path
+      id="Path_584095"
+      data-name="Path 584095"
+      d="M39.231,3,9.465,54.5,39.231,106H98.769l29.766-51.5L98.769,3H39.231M37.5,0h63L132,54.5,100.5,109h-63L6,54.5Z"
+      fill="#807700"
+    />
+  </g>
+</svg>

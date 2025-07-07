@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128.884" height="43.503">
+  <defs>
+    <filter id="f" width="128.884" height="43.503" x="0" y="0" filterUnits="userSpaceOnUse">
+      <feOffset dy="6" />
+      <feGaussianBlur result="b" stdDeviation="2" />
+      <feFlood flood-opacity=".502" />
+      <feComposite in2="b" operator="in" />
+      <feComposite in="SourceGraphic" />
+    </filter>
+  </defs>
+  <g filter="url(#f)" transform="translate(-.002 -.003)"><path fill="#D2A144" d="M 61.334 1 L 120.885 1 L 67.359 30.5 L 8 30.5 Z" /></g>
+  <path fill="#8f630a" d="M61.139 3 17.155 28.5h50.4L111.697 3H61.139m-.807-3h62.551L68.357 31.5H5.999Z" />
+</svg>

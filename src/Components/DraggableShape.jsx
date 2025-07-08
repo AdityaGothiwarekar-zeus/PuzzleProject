@@ -14,6 +14,7 @@ export default function DraggableShape({
   onRotateEnd,
   animate = false,
   isSelected = false,
+  isDragging = false,
 }) {
   const [hovered, setHovered] = useState(false);
   const shapeRef = useRef(null);
@@ -68,6 +69,7 @@ export default function DraggableShape({
   };
 
   return (
+    
     <div
       ref={shapeRef}
       className={`shape-wrapper ${animate ? 'animate' : ''}`}
@@ -79,13 +81,13 @@ export default function DraggableShape({
         transformOrigin: "center center",
         width: "100px",
         height: "100px",
-        border: isSelected ? "3px solid #007bff" : "2px solid transparent",
-        borderRadius: "8px",
-        boxShadow: isSelected ? "0 0 10px rgba(0, 123, 255, 0.5)" : "none",
-        transition: "border 0.1s ease, box-shadow 0.1s ease", // Faster transitions
+        border: "1px dashed red", // temporary boundary for collision testing
+        zIndex: 1,
+        backgroundColor: "transparent",
         cursor: isSelected ? "pointer" : "grab",
-        willChange: "transform", // Optimize for animations
+        filter: isDragging ? "drop-shadow(4px 4px 10px rgba(0,0,0,0.4))" : "none",
       }}
+
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onMouseDown={handleMouseDown}  // Add this back to the wrapper div

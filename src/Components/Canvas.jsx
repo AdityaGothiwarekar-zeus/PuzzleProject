@@ -1,7 +1,7 @@
-import React, { forwardRef, useRef, useEffect } from "react";
-import { getParallelogramPath, getTrianglePath } from "../Utils"
+import React, { forwardRef, useEffect, useRef } from "react";
+import { getParallelogramPath, getTrianglePath } from "../Utils";
 
-const Canvas = forwardRef(({ isDropped, isTriangleDropped }, ref) => {
+const Canvas = forwardRef(({ placedShapeTypes = [] }, ref) => {
   const innerRef = useRef(null);
   const canvasRef = ref || innerRef;
 
@@ -10,43 +10,31 @@ const Canvas = forwardRef(({ isDropped, isTriangleDropped }, ref) => {
     const ctx = canvas.getContext("2d");
 
     const offsetY = 40;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const clearAndDrawBaseShapes = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // ------ PARALLELOGRAM ------
+const parallelogramPath = getParallelogramPath(offsetY);
 
-      ctx.setLineDash([5, 5]);
-      ctx.strokeStyle = "gray";
-      ctx.lineWidth = 2;
+ctx.fillStyle = placedShapeTypes.includes("parallelogram") ? "#b36232" : "rgba(0,0,0,0)";
+ctx.fill(parallelogramPath);
 
-      // Draw parallelogram outline
-      const parallelogramPath = getParallelogramPath(offsetY);
-      ctx.stroke(parallelogramPath);
+ctx.strokeStyle = placedShapeTypes.includes("parallelogram") ? "#b36232" : "gray";
+ctx.setLineDash(placedShapeTypes.includes("parallelogram") ? [] : [5, 5]);
+ctx.lineWidth = 2;
+ctx.stroke(parallelogramPath);
 
-      // Draw triangle outline
-      const trianglePath = getTrianglePath(offsetY);
-      ctx.stroke(trianglePath);
-    };
+// ------ TRIANGLE ------
+const trianglePath = getTrianglePath(offsetY);
 
-    clearAndDrawBaseShapes();
+ctx.fillStyle = placedShapeTypes.includes("triangle") ? "#346819" : "rgba(0,0,0,0)";
+ctx.fill(trianglePath);
 
-    if (isDropped) {
-      const parallelogramPath = getParallelogramPath(offsetY);
-      ctx.fillStyle = "rgba(74, 222, 128, 0.3)";
-      ctx.fill(parallelogramPath);
-      ctx.setLineDash([]);
-      ctx.strokeStyle = "brown";
-      ctx.stroke(parallelogramPath);
-    }
+ctx.strokeStyle = placedShapeTypes.includes("triangle") ? "#346819" : "gray";
+ctx.setLineDash(placedShapeTypes.includes("triangle") ? [] : [5, 5]);
+ctx.stroke(trianglePath);
 
-    if (isTriangleDropped) {
-      const trianglePath = getTrianglePath(offsetY);
-      ctx.fillStyle = "rgba(74, 222, 128, 0.3)";
-      ctx.fill(trianglePath);
-      ctx.setLineDash([]);
-      ctx.strokeStyle = "brown";
-      ctx.stroke(trianglePath);
-    }
-  }, [isDropped, isTriangleDropped, canvasRef]);
+
+  }, [placedShapeTypes, canvasRef]);
 
   return (
     <canvas

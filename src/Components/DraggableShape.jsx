@@ -1,6 +1,5 @@
-// Components/DraggableShape.jsx
 import React, { useState, useRef } from "react";
-import { RotateCw } from "lucide-react";
+import { RotateCw, Trash2 } from "lucide-react";
 
 export default function DraggableShape({
   type,
@@ -15,6 +14,7 @@ export default function DraggableShape({
   animate = false,
   isSelected = false,
   isDragging = false,
+  onDelete, // <-- add delete handler
 }) {
   const [hovered, setHovered] = useState(false);
   const shapeRef = useRef(null);
@@ -46,12 +46,10 @@ export default function DraggableShape({
   };
 
   const handleMouseDown = (e) => {
-    // Prevent drag on double-click
     if (e.detail === 2) {
       e.preventDefault();
       return;
     }
-    // Call the parent's onMouseDown handler to start dragging
     if (onMouseDown) {
       onMouseDown(e);
     }
@@ -60,7 +58,6 @@ export default function DraggableShape({
   const handleDoubleClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Use requestAnimationFrame for immediate response
     requestAnimationFrame(() => {
       if (onDoubleClick) {
         onDoubleClick(e);
@@ -69,7 +66,6 @@ export default function DraggableShape({
   };
 
   return (
-    
     <div
       ref={shapeRef}
       className={`shape-wrapper ${animate ? 'animate' : ''}`}
@@ -81,16 +77,15 @@ export default function DraggableShape({
         transformOrigin: "center center",
         width: "100px",
         height: "100px",
-        border: "1px dashed red", // temporary boundary for collision testing
+        border: "1px dashed red",
         zIndex: 1,
         backgroundColor: "transparent",
         cursor: isSelected ? "pointer" : "grab",
         filter: isDragging ? "drop-shadow(4px 4px 10px rgba(0,0,0,0.4))" : "none",
       }}
-
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onMouseDown={handleMouseDown}  // Add this back to the wrapper div
+      onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
     >
       <img
@@ -107,23 +102,48 @@ export default function DraggableShape({
       />
 
       {(hovered || isSelected) && (
-        <div
-          className="rotate-icon"
-          onMouseDown={handleRotateMouseDown}
-          style={{
-            position: "absolute",
-            top: "-10px",
-            right: "-10px",
-            backgroundColor: "#fff",
-            borderRadius: "50%",
-            padding: "4px",
-            boxShadow: "0 0 5px rgba(0,0,0,0.3)",
-            cursor: "grab",
-            zIndex: 10,
-          }}
-        >
-          <RotateCw size={16} />
-        </div>
+        <>
+          {/* Rotate icon (top-right) */}
+          <div
+            className="rotate-icon"
+            onMouseDown={handleRotateMouseDown}
+            style={{
+              position: "absolute",
+              top: "-10px",
+              right: "-10px",
+              backgroundColor: "#fff",
+              borderRadius: "50%",
+              padding: "4px",
+              boxShadow: "0 0 5px rgba(0,0,0,0.3)",
+              cursor: "grab",
+              zIndex: 10,
+            }}
+          >
+            <RotateCw size={16} />
+          </div>
+
+          {/* Delete icon (bottom-left) */}
+          <div
+            className="delete-icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onDelete) onDelete();
+            }}
+            style={{
+              position: "absolute",
+              bottom: "-10px",
+              left: "-10px",
+              backgroundColor: "#fff",
+              borderRadius: "50%",
+              padding: "4px",
+              boxShadow: "0 0 5px rgba(0,0,0,0.3)",
+              cursor: "pointer",
+              zIndex: 10,
+            }}
+          >
+            <Trash2 size={16} />
+          </div>
+        </>
       )}
     </div>
   );

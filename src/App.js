@@ -4,53 +4,111 @@ import Canvas from "./Components/Canvas.jsx";
 import DraggableShape from "./Components/DraggableShape.jsx";
 import PaletteShape from "./Components/PaletteShape.jsx";
 import "./App.css";
-import { getParallelogramPath, getTrianglePath } from "./Utils.js";
+import { getParallelogramPath, getTrianglePath ,getHexagonPath} from "./Utils.js";
+
+const SHAPE_CONFIG = {
+  size: 100,
+  rotationTolerance: 10,
+  snapOffsets: {
+    parallelogram: { x: 85, y: 90 },
+    triangle: { x: 97, y: 6 },
+    hexagon: { x: 250, y: 150 },
+    
+  },
+};
 
 export default function App() {
   const [droppedShapes, setDroppedShapes] = useState([]);
+  const [ghostShape, setGhostShape] = useState(null);
   const [draggingShapeId, setDraggingShapeId] = useState(null);
   const [selectedShapeId, setSelectedShapeId] = useState(null);
   const [placedShapeTypes, setPlacedShapeTypes] = useState([]);
-  const [pendingNewShape, setPendingNewShape] = useState(null);
 
   const canvasRef = useRef(null);
   const dragDataRef = useRef({ isDragging: false, shapeId: null, offset: { x: 0, y: 0 } });
-  const rotationDataRef = useRef({ 
-    isRotating: false, 
-    shapeId: null, 
-    center: { x: 0, y: 0 }, 
-    startAngle: 0, 
-    initialRotation: 0 
+  const rotationDataRef = useRef({
+    isRotating: false,
+    shapeId: null,
+    center: { x: 0, y: 0 },
+    startAngle: 0,
+    initialRotation: 0,
   });
+  const lastValidPositionRef = useRef({});
+  const visualPositionRef = useRef({});
+  const collisionPauseRef = useRef({}); // New ref to track collision pause state
 
-  const ROTATION_TOLERANCE = 10;
+  const getSnapPosition = (type) => SHAPE_CONFIG.snapOffsets[type] || { x: 0, y: 0 };
 
-  const startDraggingNewShape = (type, imageSrc) => (e) => {
+  const isSnapped = (posX, posY, snapX, snapY, tolerance = 5) =>
+    Math.abs(posX - snapX) <= tolerance && Math.abs(posY - snapY) <= tolerance;
+
+  const startGhostDrag = (type, imageSrc) => (e) => {
     e.preventDefault();
-    const id = Date.now();
-
-    const newShape = {
-      id,
+    const offset = { x: 50, y: 50 };
+    setGhostShape({
+      id: "ghost",
       type,
       imageSrc,
-      position: { x: e.pageX - 50, y: e.pageY - 50 },
-      rotation: 0,
-      animate: false,
-      isSelected: false,
+      position: {
+        x: e.clientX - offset.x,
+        y: e.clientY - offset.y,
+      },
+    });
+
+    const handleMouseMove = (moveEvent) => {
+      setGhostShape((prev) =>
+        prev
+          ? {
+              ...prev,
+              position: {
+                x: moveEvent.clientX - offset.x,
+                y: moveEvent.clientY - offset.y,
+              },
+            }
+          : null
+      );
     };
 
-    setDroppedShapes((prev) => [...prev, newShape]);
-    setDraggingShapeId(id);
-    dragDataRef.current = {
-      isDragging: true,
-      shapeId: id,
-      offset: { x: 50, y: 50 }
+    const handleMouseUp = (upEvent) => {
+      const wrapperBounds = canvasRef.current.getBoundingClientRect();
+      const insideWrapper =
+        upEvent.clientX >= wrapperBounds.left &&
+        upEvent.clientX <= wrapperBounds.right &&
+        upEvent.clientY >= wrapperBounds.top &&
+        upEvent.clientY <= wrapperBounds.bottom;
+
+      if (insideWrapper) {
+        const canvasX = upEvent.clientX - wrapperBounds.left - offset.x;
+        const canvasY = upEvent.clientY - wrapperBounds.top - offset.y;
+        const id = Date.now();
+
+        setDroppedShapes((prev) => [
+          ...prev,
+          {
+            id,
+            type,
+            imageSrc,
+            position: {
+              x: Math.max(0, Math.min(canvasX, wrapperBounds.width - SHAPE_CONFIG.size)),
+              y: Math.max(0, Math.min(canvasY, wrapperBounds.height - SHAPE_CONFIG.size)),
+            },
+            rotation: 0,
+            animate: false,
+            isSelected: false,
+          },
+        ]);
+      }
+
+      setGhostShape(null);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
   };
 
-  const getAngle = (center, x, y) => {
-    return Math.atan2(y - center.y, x - center.x) * (180 / Math.PI);
-  };
+  const getAngle = (center, x, y) => Math.atan2(y - center.y, x - center.x) * (180 / Math.PI);
 
   const normalizeAngle = (angle) => {
     angle = angle % 360;
@@ -58,156 +116,137 @@ export default function App() {
     return angle;
   };
 
-  const checkShapeFit = (shape, ctx, canvasRect) => {
-    const shapeCenterX = shape.position.x - canvasRect.left + 50;
-    const shapeCenterY = shape.position.y - canvasRect.top + 50;
+  const checkShapeFit = (shape, ctx) => {
+    const shapeCenterX = shape.position.x + SHAPE_CONFIG.size / 2;
+    const shapeCenterY = shape.position.y + SHAPE_CONFIG.size / 2;
+    const typeToPath = {
+      parallelogram: getParallelogramPath,
+      triangle: getTrianglePath,
+      hexagon: getHexagonPath,
+    };
+    const targetPath = typeToPath[shape.type]?.(40);
 
-    const offsetY = 40;
-    let targetPath, correctRotation;
+    const angle = normalizeAngle(shape.rotation);
+    const fitsRotation =
+      angle <= SHAPE_CONFIG.rotationTolerance ||
+      angle >= 360 - SHAPE_CONFIG.rotationTolerance;
 
-    if (shape.type === "parallelogram") {
-      targetPath = getParallelogramPath(offsetY);
-      correctRotation = 0;
-    } else if (shape.type === "triangle") {
-      targetPath = getTrianglePath(offsetY);
-      correctRotation = 0;
-    } else {
-      return { fits: false };
-    }
+    ctx.save();
+    ctx.translate(shapeCenterX, shapeCenterY);
+    ctx.rotate((shape.rotation * Math.PI) / 180);
+    ctx.translate(-shapeCenterX, -shapeCenterY);
+    const fitsPath = ctx.isPointInPath(targetPath, shapeCenterX, shapeCenterY);
+    ctx.restore();
 
-    const isInside = ctx.isPointInPath(targetPath, shapeCenterX, shapeCenterY);
-    const normalizedRotation = normalizeAngle(shape.rotation);
-    const isRotationCorrect = Math.abs(normalizedRotation - correctRotation) <= ROTATION_TOLERANCE;
-
-    return { fits: isInside && isRotationCorrect };
+    return { fits: fitsPath && fitsRotation };
   };
 
   const isColliding = (newX, newY, shapeId) => {
-    const shapeSize = 100;
-    const canvasRect = canvasRef.current.getBoundingClientRect();
-
+    const size = SHAPE_CONFIG.size;
     return droppedShapes.some((shape) => {
       if (shape.id === shapeId) return false;
-
-      const isSnapped =
-        (shape.type === "parallelogram" &&
-          shape.position.x === canvasRect.left + 85 &&
-          shape.position.y === canvasRect.top + 90) ||
-        (shape.type === "triangle" &&
-          shape.position.x === canvasRect.left + 97 &&
-          shape.position.y === canvasRect.top + 6);
-
-      if (isSnapped) return false;
-
-      const otherX = shape.position.x;
-      const otherY = shape.position.y;
-
+      const snapPos = getSnapPosition(shape.type);
+      if (isSnapped(shape.position.x, shape.position.y, snapPos.x, snapPos.y)) return false;
       return (
-        newX < otherX + shapeSize &&
-        newX + shapeSize > otherX &&
-        newY < otherY + shapeSize &&
-        newY + shapeSize > otherY
+        newX < shape.position.x + size &&
+        newX + size > shape.position.x &&
+        newY < shape.position.y + size &&
+        newY + size > shape.position.y
       );
     });
   };
 
   const handleMouseMove = useCallback((e) => {
     if (!dragDataRef.current.isDragging) return;
-
     const { shapeId, offset } = dragDataRef.current;
     const currentShape = droppedShapes.find((s) => s.id === shapeId);
     if (!currentShape) return;
 
-    const fromX = currentShape.position.x;
-    const fromY = currentShape.position.y;
-    const toX = e.pageX - offset.x;
-    const toY = e.pageY - offset.y;
-
-    const steps = 10;
-    let blocked = false;
-
-    for (let i = 1; i <= steps; i++) {
-      const stepX = fromX + ((toX - fromX) * i) / steps;
-      const stepY = fromY + ((toY - fromY) * i) / steps;
-
-      if (isColliding(stepX, stepY, shapeId)) {
-        blocked = true;
-        break;
-      }
+    // Check if this shape is currently paused due to collision
+    if (collisionPauseRef.current[shapeId]) {
+      return; // Skip all movement during pause
     }
 
-    if (blocked) return;
+    const canvasBounds = canvasRef.current.getBoundingClientRect();
+    const wrapperWidth = canvasRef.current.offsetWidth;
+    const wrapperHeight = canvasRef.current.offsetHeight;
+    const size = SHAPE_CONFIG.size;
 
+    let toX = e.clientX - canvasBounds.left - offset.x;
+    let toY = e.clientY - canvasBounds.top - offset.y;
+
+    // Constrain within canvas bounds
+    toX = Math.max(0, Math.min(toX, wrapperWidth - size));
+    toY = Math.max(0, Math.min(toY, wrapperHeight - size));
+
+    // Check collision
+    if (isColliding(toX, toY, shapeId)) {
+      // Set collision pause for 2 seconds
+      collisionPauseRef.current[shapeId] = true;
+      
+      setTimeout(() => {
+        collisionPauseRef.current[shapeId] = false;
+      }, 2000);
+      
+      return; // Don't update position during collision
+    }
+
+    // Store visual position for immediate DOM update
+    visualPositionRef.current[shapeId] = { x: toX, y: toY };
+
+    // Update state position
     setDroppedShapes((prevShapes) =>
       prevShapes.map((shape) =>
-        shape.id === shapeId
-          ? { ...shape, position: { x: toX, y: toY } }
-          : shape
+        shape.id === shapeId ? { ...shape, position: { x: toX, y: toY } } : shape
       )
     );
   }, [droppedShapes]);
 
   const handleMouseUp = useCallback(() => {
     if (!dragDataRef.current.isDragging) return;
-
     const { shapeId } = dragDataRef.current;
     const canvas = canvasRef.current;
-    const canvasRect = canvas.getBoundingClientRect();
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.querySelector("canvas").getContext("2d");
 
     setDroppedShapes((prevShapes) =>
       prevShapes.map((shape) => {
         if (shape.id !== shapeId) return shape;
+        const { fits } = checkShapeFit(shape, ctx);
 
-        const { fits } = checkShapeFit(shape, ctx, canvasRect);
         if (fits) {
-          let snapX, snapY, finalRotation;
-
-          if (shape.type === "parallelogram") {
-            snapX = canvasRect.left + 85;
-            snapY = canvasRect.top + 90;
-            finalRotation = 0;
-          } else if (shape.type === "triangle") {
-            snapX = canvasRect.left + 97;
-            snapY = canvasRect.top + 6;
-            finalRotation = 2;
-          }
-
+          const snapPos = getSnapPosition(shape.type);
           return {
             ...shape,
             animate: true,
-            rotation: finalRotation,
-            position: { x: snapX, y: snapY },
+            rotation: 0,
+            position: snapPos,
           };
         }
-
         return shape;
       })
     );
 
+    // Clean up references for this shape
+    delete visualPositionRef.current[shapeId];
+    delete collisionPauseRef.current[shapeId];
+    
     dragDataRef.current = { isDragging: false, shapeId: null, offset: { x: 0, y: 0 } };
     setDraggingShapeId(null);
-  }, []);
+  }, [checkShapeFit]);
 
-  // Rotation handlers - reordered to fix circular dependency
   const handleRotateMove = useCallback((currentX, currentY) => {
     if (!rotationDataRef.current.isRotating) return;
-
     const { shapeId, center, startAngle, initialRotation } = rotationDataRef.current;
     const currentAngle = getAngle(center, currentX, currentY);
     const angleDiff = currentAngle - startAngle;
     const newRotation = initialRotation + angleDiff;
-
     setDroppedShapes((prevShapes) =>
       prevShapes.map((shape) =>
-        shape.id === shapeId
-          ? { ...shape, rotation: newRotation }
-          : shape
+        shape.id === shapeId ? { ...shape, rotation: newRotation } : shape
       )
     );
   }, []);
 
-  // Handle rotation mouse events - defined before handleRotateEnd
   const handleRotationMouseMove = useCallback((e) => {
     if (!rotationDataRef.current.isRotating) return;
     handleRotateMove(e.clientX, e.clientY);
@@ -219,10 +258,8 @@ export default function App() {
   }, []);
 
   const handleRotateEnd = useCallback(() => {
-    // Remove event listeners when rotation ends
     window.removeEventListener("mousemove", handleRotationMouseMove);
     window.removeEventListener("mouseup", handleRotationMouseUp);
-    
     rotationDataRef.current = {
       isRotating: false,
       shapeId: null,
@@ -235,7 +272,6 @@ export default function App() {
   const handleRotateStart = (shapeId) => (center, startX, startY) => {
     const shape = droppedShapes.find((s) => s.id === shapeId);
     if (!shape) return;
-
     const startAngle = getAngle(center, startX, startY);
     rotationDataRef.current = {
       isRotating: true,
@@ -244,8 +280,6 @@ export default function App() {
       startAngle,
       initialRotation: shape.rotation,
     };
-
-    // Add event listeners immediately when rotation starts
     window.addEventListener("mousemove", handleRotationMouseMove);
     window.addEventListener("mouseup", handleRotationMouseUp);
   };
@@ -264,13 +298,18 @@ export default function App() {
   const handleShapeMouseDown = (shapeId) => (e) => {
     const shape = droppedShapes.find((s) => s.id === shapeId);
     if (!shape) return;
-
+    const bounds = canvasRef.current.getBoundingClientRect();
+    
+    // Initialize visual position and clear any existing collision pause
+    visualPositionRef.current[shapeId] = { ...shape.position };
+    collisionPauseRef.current[shapeId] = false;
+    
     dragDataRef.current = {
       isDragging: true,
       shapeId,
       offset: {
-        x: e.pageX - shape.position.x,
-        y: e.pageY - shape.position.y,
+        x: e.clientX - bounds.left - shape.position.x,
+        y: e.clientY - bounds.top - shape.position.y,
       },
     };
     setDraggingShapeId(shapeId);
@@ -283,67 +322,120 @@ export default function App() {
   };
 
   useEffect(() => {
-    const canvasRect = canvasRef.current.getBoundingClientRect();
-    const updatedTypes = [];
-
-    droppedShapes.forEach((shape) => {
-      if (shape.type === "parallelogram") {
-        if (shape.position.x === canvasRect.left + 85 && shape.position.y === canvasRect.top + 90)
-          updatedTypes.push("parallelogram");
+    const updatedTypes = droppedShapes.reduce((acc, shape) => {
+      const snap = getSnapPosition(shape.type);
+      if (isSnapped(shape.position.x, shape.position.y, snap.x, snap.y)) {
+        acc.push(shape.type);
       }
-      if (shape.type === "triangle") {
-        if (shape.position.x === canvasRect.left + 97 && shape.position.y === canvasRect.top + 6)
-          updatedTypes.push("triangle");
-      }
-    });
-
+      return acc;
+    }, []);
     setPlacedShapeTypes([...new Set(updatedTypes)]);
   }, [droppedShapes]);
 
   return (
-    <div className="container">
+    <div
+      className="container"
+      style={{
+        width: "100vw",
+        height: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "relative",
+      }}
+    >
       <div
         style={{
           position: "absolute",
-          left: "380px",
-          top: "320px",
+          left: "22%",
           display: "flex",
           flexDirection: "column",
-          gap: "12px",
+          gap: "4px",
+          top: "30%",
           zIndex: 10,
         }}
       >
         <PaletteShape
           type="parallelogram"
           imageSrc="/pb_s5/parallelogram.svg"
-          onMouseDown={startDraggingNewShape("parallelogram", "/pb_s5/parallelogram.svg")}
+          onMouseDown={startGhostDrag("parallelogram", "/pb_s5/parallelogram.svg")}
         />
         <PaletteShape
           type="triangle"
           imageSrc="/pb_s5/triangle-_active.svg"
-          onMouseDown={startDraggingNewShape("triangle", "/pb_s5/triangle-_active.svg")}
+          onMouseDown={startGhostDrag("triangle", "/pb_s5/triangle-_active.svg")}
         />
+        <PaletteShape
+          type="hexagon"
+          imageSrc="/pb_s5/hexagon_active.svg"
+          onMouseDown={startGhostDrag("hexagon", "/pb_s5/hexagon_active.svg")}
+        />
+
       </div>
 
-      <Canvas ref={canvasRef} placedShapeTypes={placedShapeTypes} />
+      <div
+        className="canvas-wrapper"
+        ref={canvasRef}
+        style={{
+          width: "600px",
+          height: "400px",
+          position: "relative",
+          border: "2px dashed #999",
+          overflow: "hidden",
+        }}
+      >
+        <Canvas placedShapeTypes={placedShapeTypes} />
+        {droppedShapes.map((shape) => {
+          const isDragging = draggingShapeId === shape.id;
+          const displayPosition = isDragging && visualPositionRef.current[shape.id] 
+            ? visualPositionRef.current[shape.id] 
+            : shape.position;
+            
+          return (
+            <DraggableShape
+            key={shape.id}
+            type={shape.type}
+            position={displayPosition}
+            onMouseDown={handleShapeMouseDown(shape.id)}
+            onDoubleClick={handleDoubleClick(shape.id)}
+            imageSrc={shape.imageSrc}
+            rotation={shape.rotation}
+            animate={shape.animate}
+            isSelected={selectedShapeId === shape.id}
+            isDragging={isDragging}
+            onRotateStart={handleRotateStart(shape.id)}
+            onRotateMove={handleRotateMove}
+            onRotateEnd={handleRotateEnd}
+            onDelete={() => {
+              setDroppedShapes((prev) => prev.filter((s) => s.id !== shape.id));
+              delete visualPositionRef.current[shape.id];
+              delete collisionPauseRef.current[shape.id];
+              if (draggingShapeId === shape.id) setDraggingShapeId(null);
+              if (selectedShapeId === shape.id) setSelectedShapeId(null);
+            }}
+            />
 
-      {droppedShapes.map((shape) => (
-        <DraggableShape
-          key={shape.id}
-          type={shape.type}
-          position={shape.position}
-          onMouseDown={handleShapeMouseDown(shape.id)}
-          onDoubleClick={handleDoubleClick(shape.id)}
-          imageSrc={shape.imageSrc}
-          rotation={shape.rotation}
-          animate={shape.animate}
-          isSelected={selectedShapeId === shape.id}
-          isDragging={draggingShapeId === shape.id}
-          onRotateStart={handleRotateStart(shape.id)}
-          onRotateMove={handleRotateMove}
-          onRotateEnd={handleRotateEnd}
+          );
+        })}
+      </div>
+
+      {/* Ghost Shape */}
+      {ghostShape && (
+        <img
+          src={ghostShape.imageSrc}
+          alt={ghostShape.type}
+          style={{
+            position: "fixed",
+            pointerEvents: "none",
+            left: ghostShape.position.x,
+            top: ghostShape.position.y,
+            width: SHAPE_CONFIG.size,
+            height: SHAPE_CONFIG.size,
+            opacity: 0.8,
+            zIndex: 9999,
+          }}
         />
-      ))}
+      )}
     </div>
   );
 }

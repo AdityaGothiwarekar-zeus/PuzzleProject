@@ -15,6 +15,7 @@
   align-items: center;
   justify-content: center;
   user-select: none;
+  touch-action: none;
 }
 
 /* .canvas-wrapper {
@@ -52,3 +53,14 @@
   background: #f9f9f9;
 } */
 
+@keyframes flash {
+  0% { opacity: 1; }
+  25% { opacity: 0.2; }
+  50% { opacity: 1; }
+  75% { opacity: 0.2; }
+  100% { opacity: 1; }
+}
+
+.shape-flash {
+  animation: flash 0.2s ease-in-out;
+}

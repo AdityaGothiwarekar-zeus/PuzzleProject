@@ -1,3 +1,18 @@
+/**
+ * A mapping of shape types to their corresponding image file paths.
+ */
+export const shapeImageMap = {
+  parallelogram: "/pb_s5/parallelogram.svg",
+  triangle: "/pb_s5/triangle-_active.svg",
+  hexagon: "/pb_s5/hexagon_active.svg",
+};
+
+/**
+ * Generates a Path2D object representing a parallelogram shape.
+ *
+ * @param {number} [offsetY=0] - Vertical offset to shift the shape along the Y-axis.
+ * @returns {Path2D} The Path2D object for the parallelogram.
+ */
 export const getParallelogramPath = (offsetY = 0) => {
   const path = new Path2D();
   path.moveTo(105, 50 + offsetY);
@@ -8,6 +23,12 @@ export const getParallelogramPath = (offsetY = 0) => {
   return path;
 };
 
+/**
+ * Generates a Path2D object representing a triangle shape.
+ *
+ * @param {number} [offsetY=0] - Vertical offset to shift the shape along the Y-axis.
+ * @returns {Path2D} The Path2D object for the triangle.
+ */
 export const getTrianglePath = (offsetY = 0) => {
   const path = new Path2D();
   path.moveTo(105, 50 + offsetY);
@@ -17,6 +38,12 @@ export const getTrianglePath = (offsetY = 0) => {
   return path;
 };
 
+/**
+ * Generates a Path2D object representing a regular hexagon shape.
+ *
+ * @param {number} [size=40] - The radius of the hexagon from its center to a vertex.
+ * @returns {Path2D} The Path2D object for the hexagon.
+ */
 export function getHexagonPath(size = 40) {
   const path = new Path2D();
   const centerX = 250;
@@ -37,4 +64,3 @@ export function getHexagonPath(size = 40) {
   path.closePath();
   return path;
 }
-

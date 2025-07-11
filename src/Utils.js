@@ -64,3 +64,63 @@ export function getHexagonPath(size = 40) {
   path.closePath();
   return path;
 }
+
+
+export function snapToCanvasEdge(pos, canvasRect, size, threshold = 5) {
+  const snapped = { ...pos };
+  if (Math.abs(pos.x) <= threshold) snapped.x = 0;
+  if (Math.abs(pos.y) <= threshold) snapped.y = 0;
+  if (Math.abs((canvasRect.width - size) - pos.x) <= threshold)
+    snapped.x = canvasRect.width - size;
+  if (Math.abs((canvasRect.height - size) - pos.y) <= threshold)
+    snapped.y = canvasRect.height - size;
+  return snapped;
+}
+
+export const getNearestGridPoint = (x, y, spacing = 10) => {
+  const snappedX = Math.round(x / spacing) * spacing;
+  const snappedY = Math.round(y / spacing) * spacing;
+  return { x: snappedX, y: snappedY };
+};
+
+//perfect polygon shape centers
+export function getShapePoints(type) {
+  if (!type || typeof type.toLowerCase !== 'function') return [];
+
+  switch (type.toLowerCase()) {
+    case 'parallelogram':
+      return [/* your parallelogram points */];
+    case 'triangle':
+      return [/* triangle points */];
+    case 'hexagon':
+      return [/* hexagon points */];
+    default:
+      return [];
+  }
+}
+
+export const rotatePoints = (points, center, angleDeg) => {
+  const angleRad = (angleDeg * Math.PI) / 180;
+  return points.map(([x, y]) => {
+    const dx = x - center[0];
+    const dy = y - center[1];
+    const rotatedX = center[0] + dx * Math.cos(angleRad) - dy * Math.sin(angleRad);
+    const rotatedY = center[1] + dx * Math.sin(angleRad) + dy * Math.cos(angleRad);
+    return [rotatedX, rotatedY];
+  });
+};
+export const getBoundingBox = (points) => {
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+    centerX: (Math.max(...xs) + Math.min(...xs)) / 2,
+    centerY: (Math.max(...ys) + Math.min(...ys)) / 2,
+  };
+};
+

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { RotateCw, Trash2 } from "lucide-react";
+import id from "../App"
 
 export default function DraggableShape({
   type,
@@ -14,12 +15,15 @@ export default function DraggableShape({
   animate = false,
   isSelected = false,
   isDragging = false,
-  onDelete, // <-- add delete handler
+  onDelete,
+  onClick,
 }) {
+  const rotationStartedRef = useRef(false);
   const [hovered, setHovered] = useState(false);
   const shapeRef = useRef(null);
 
   const handleRotateMouseDown = (e) => {
+    rotationStartedRef.current = true;
     e.stopPropagation();
     if (!shapeRef.current) return;
 
@@ -55,19 +59,101 @@ export default function DraggableShape({
     }
   };
 
-  const handleDoubleClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    requestAnimationFrame(() => {
-      if (onDoubleClick) {
-        onDoubleClick(e);
-      }
-    });
+  // const handleDoubleClick = (e) => {
+  //   e.preventDefault();
+  //   e.stopPropagation();
+  //   requestAnimationFrame(() => {
+  //     if (onDoubleClick) {
+  //       onDoubleClick(e);
+  //     }
+  //   });
+  // };
+
+  // Get border style based on shape type
+  const getBorderStyle = () => {
+    const baseStyle = {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      width: "100%",
+      height: "100%",
+      pointerEvents: "none",
+      stroke: "red",
+      strokeWidth: 2,
+      strokeDasharray: "5,5",
+      fill: "none",
+    };
+
+    switch (type?.toLowerCase()) {
+      case "triangle":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 95,95 5,95" />
+          </svg>
+        );
+      case "hexagon":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 85,25 85,75 50,95 15,75 15,25" />
+          </svg>
+        );
+      case "circle":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="45" />
+          </svg>
+        );
+      case "diamond":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 95,50 50,95 5,50" />
+          </svg>
+        );
+      case "pentagon":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,5 90,35 75,85 25,85 10,35" />
+          </svg>
+        );
+      case "octagon":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="30,5 70,5 95,30 95,70 70,95 30,95 5,70 5,30" />
+          </svg>
+        );
+      case "star":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="50,2 61,35 95,35 68,57 79,91 50,69 21,91 32,57 5,35 39,35" />
+          </svg>
+        );
+      case "parallelogram":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="15,5 95,5 85,95 5,95" transform="rotate(4 60 60)" />
+          </svg>
+        );
+      case "trapezoid":
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <polygon points="25,10 75,10 90,90 10,90" />
+          </svg>
+        );
+      case "square":
+      case "rectangle":
+      default:
+        return (
+          <svg style={baseStyle} viewBox="0 0 100 100">
+            <rect x="5" y="5" width="90" height="90" />
+          </svg>
+        );
+    }
   };
 
   return (
     <div
       ref={shapeRef}
+      data-shape-id={id}
       className={`shape-wrapper ${animate ? 'animate' : ''}`}
       style={{
         position: "absolute",
@@ -77,7 +163,6 @@ export default function DraggableShape({
         transformOrigin: "center center",
         width: "100px",
         height: "100px",
-        border: "1px dashed red",
         zIndex: 1,
         backgroundColor: "transparent",
         cursor: isSelected ? "pointer" : "grab",
@@ -86,7 +171,11 @@ export default function DraggableShape({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onMouseDown={handleMouseDown}
-      onDoubleClick={handleDoubleClick}
+      // onDoubleClick={handleDoubleClick}
+      onClick={(e) => {
+    e.stopPropagation(); // prevent bubbling to canvas
+    if (onClick) onClick(e); //call shape click handler
+  }}
     >
       <img
         src={imageSrc}
@@ -97,9 +186,14 @@ export default function DraggableShape({
           userSelect: "none",
           pointerEvents: "none",
           opacity: isSelected ? 0.9 : 1,
+          position: "relative",
+          zIndex: 1,
         }}
         draggable={false}
       />
+
+      {/* Custom border based on shape type */}
+      {getBorderStyle()}
 
       {(hovered || isSelected) && (
         <>

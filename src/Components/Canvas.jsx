@@ -81,6 +81,7 @@ const Canvas = forwardRef(({ droppedShapes = [] }, ref) => {
       ctx.fill(path);
       ctx.stroke(path);
     }
+    console.log("Canvas", droppedShapes);
   }, [droppedShapes]);
 
   return (

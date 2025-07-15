@@ -124,3 +124,22 @@ export const getBoundingBox = (points) => {
   };
 };
 
+
+export const isOverlappingWithExisting = (newPosition, size, droppedShapes, shapeType, allowOverlapTypes = []) => {
+  if (allowOverlapTypes.includes(shapeType)) return false;
+
+  for (const shape of droppedShapes) {
+    if (allowOverlapTypes.includes(shape.type)) continue;
+
+    const existing = shape.position;
+    const overlapW = Math.max(0, Math.min(newPosition.x + size, existing.x + size) - Math.max(newPosition.x, existing.x));
+    const overlapH = Math.max(0, Math.min(newPosition.y + size, existing.y + size) - Math.max(newPosition.y, existing.y));
+    const overlapArea = overlapW * overlapH;
+
+    if (overlapArea > 0) return true;
+  }
+  return false;
+};
+
+
+

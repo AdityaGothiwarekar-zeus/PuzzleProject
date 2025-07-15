@@ -1,10 +1,10 @@
-// App.js
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Canvas from "./Components/Canvas.jsx";
 import DraggableShape from "./Components/DraggableShape.jsx";
 import PaletteShape from "./Components/PaletteShape.jsx";
 import "./App.css";
 import { getParallelogramPath, getTrianglePath, getHexagonPath , getShapePoints, rotatePoints, getBoundingBox } from "./Utils.js";
+import { isOverlappingWithExisting } from "./Utils.js";
 // import rotationStartedRef from "./Components/DraggableShape.jsx";
 
 const SHAPE_CONFIG = {
@@ -260,24 +260,32 @@ export default function App() {
   };
 
   // Handle pending shape click to place it permanently
-  const handlePendingShapeClick = (e) => {
-    e.stopPropagation();
-    if (pendingShape) {
-      const shouldClip = checkShapeFit(pendingShape);
-      
-      const finalShape = {
-        ...pendingShape,
-        id: Date.now(),
-        isPending: false,
-        animate: shouldClip,
-        position: shouldClip ? getSnapPosition(pendingShape.type) : pendingShape.position,
-        rotation: shouldClip ? 0 : pendingShape.rotation,
-      };
-      
-      setDroppedShapes((prev) => [...prev, finalShape]);
-      setPendingShape(null);
+const handlePendingShapeClick = (e) => {
+  e.stopPropagation();
+  if (pendingShape) {
+    const shouldClip = checkShapeFit(pendingShape);
+
+    const finalShape = {
+      ...pendingShape,
+      id: Date.now(),
+      isPending: false,
+      animate: shouldClip,
+      position: shouldClip ? getSnapPosition(pendingShape.type) : pendingShape.position,
+      rotation: shouldClip ? 0 : pendingShape.rotation,
+    };
+    console.log("overlap called");
+    const overlap = isOverlappingWithExisting(finalShape, droppedShapes, SHAPE_CONFIG.size);
+    if (overlap) {
+      console.log("Cannot place shape here. It overlaps an existing shape.");
+      return;
     }
-  };
+    console.log("overlap result recieved");
+
+    setDroppedShapes((prev) => [...prev, finalShape]);
+    setPendingShape(null);
+  }
+};
+
 
   // Check if a shape fits within the designated area
   const checkShapeFit = (shape) => {
@@ -361,9 +369,32 @@ export default function App() {
           position: finalPosition,
           rotation: 0,
         };
+        const isOverlap = isOverlappingWithExisting(
+        finalPosition,
+        SHAPE_CONFIG.size,
+        droppedShapes,
+        ["hexagon"]
+      );
+
         
         const shouldClip = checkShapeFit(tempShape);
-        
+        const isOverlapping = droppedShapes.some((existing) => {
+        const dx = Math.abs(existing.position.x - finalPosition.x);
+        const dy = Math.abs(existing.position.y - finalPosition.y);
+        return (
+          dx < SHAPE_CONFIG.size &&
+          dy < SHAPE_CONFIG.size
+        );
+      });
+
+      if (isOverlapping) {
+        // Prevent drop if overlapping
+        setGhostShape(null);
+        setIsDraggingFromPalette(false);
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+        return;
+      }
         setDroppedShapes((prev) => [
           ...prev,
           {
@@ -521,7 +552,7 @@ const handleMouseUp = useCallback(() => {
           const overlapArea = overlapW * overlapH;
           const totalArea = SHAPE_CONFIG.size * SHAPE_CONFIG.size;
 
-          if (overlapArea > 0.2 * totalArea) {
+          if (overlapArea > 0 * totalArea) {
             const centerX = a.position.x;
             const centerY = a.position.y;
             a.position = { x: centerX, y: centerY };
@@ -617,6 +648,13 @@ const handleMouseUp = useCallback(() => {
       },
     };
     setDraggingShapeId(shapeId);
+    if (shape.type !== "parallelogram") {
+    setDroppedShapes((prev) => {
+      const target = prev.find((s) => s.id === shapeId);
+      const others = prev.filter((s) => s.id !== shapeId);
+      return [...others, target];
+    });
+  }
   };
 
   const handleDoubleClick = (id) => () => {

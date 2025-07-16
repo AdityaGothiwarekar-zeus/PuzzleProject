@@ -3,8 +3,15 @@ import Canvas from "./Components/Canvas.jsx";
 import DraggableShape from "./Components/DraggableShape.jsx";
 import PaletteShape from "./Components/PaletteShape.jsx";
 import "./App.css";
-import { getParallelogramPath, getTrianglePath, getHexagonPath , getShapePoints, rotatePoints, getBoundingBox } from "./Utils.js";
-import { isOverlappingWithExisting } from "./Utils.js";
+import { getParallelogramPath, getTrianglePath, getHexagonPath , getShapePoints, rotatePoints, getBoundingBox, 
+  getShapeCollisionPoints, 
+  areShapesColliding, 
+  isCollidingWithCustomBoundaries, 
+  isOverlappingWithExisting,
+  isColliding,
+  areShapesCollidingPath2D
+} from "./Utils.js";
+// import { isOverlappingWithExisting } from "./Utils.js";
 // import rotationStartedRef from "./Components/DraggableShape.jsx";
 
 const SHAPE_CONFIG = {
@@ -67,21 +74,87 @@ const findNearestGridPoint = (position, gridPoints, maxDistance = Infinity) => {
   
   return nearestPoint;
 };
+const getEdgeSnappedPosition = (movingShape, existingShapes, snapDistance = 10) => {
+  const movingBounds = {
+    left: movingShape.position.x,
+    right: movingShape.position.x + SHAPE_CONFIG.size,
+    top: movingShape.position.y,
+    bottom: movingShape.position.y + SHAPE_CONFIG.size
+  };
 
+  let snapX = movingShape.position.x;
+  let snapY = movingShape.position.y;
+  let snapped = false;
+
+  // Check against all existing shapes
+  for (const existingShape of existingShapes) {
+    if (existingShape.id === movingShape.id) continue;
+
+    const existingBounds = {
+      left: existingShape.position.x,
+      right: existingShape.position.x + SHAPE_CONFIG.size,
+      top: existingShape.position.y,
+      bottom: existingShape.position.y + SHAPE_CONFIG.size
+    };
+
+    // Horizontal snapping (left/right edges)
+    // Moving shape's right edge to existing shape's left edge
+    if (Math.abs(movingBounds.right - existingBounds.left) <= snapDistance) {
+      const newX = existingBounds.left - SHAPE_CONFIG.size;
+      if (newX >= 0) {
+        snapX = newX;
+        snapped = true;
+      }
+    }
+    // Moving shape's left edge to existing shape's right edge
+    else if (Math.abs(movingBounds.left - existingBounds.right) <= snapDistance) {
+      snapX = existingBounds.right;
+      snapped = true;
+    }
+    // Moving shape's left edge to existing shape's left edge
+    else if (Math.abs(movingBounds.left - existingBounds.left) <= snapDistance) {
+      snapX = existingBounds.left;
+      snapped = true;
+    }
+    // Moving shape's right edge to existing shape's right edge
+    else if (Math.abs(movingBounds.right - existingBounds.right) <= snapDistance) {
+      snapX = existingBounds.right - SHAPE_CONFIG.size;
+      snapped = true;
+    }
+
+    // Vertical snapping (top/bottom edges)
+    // Moving shape's bottom edge to existing shape's top edge
+    if (Math.abs(movingBounds.bottom - existingBounds.top) <= snapDistance) {
+      const newY = existingBounds.top - SHAPE_CONFIG.size;
+      if (newY >= 0) {
+        snapY = newY;
+        snapped = true;
+      }
+    }
+    // Moving shape's top edge to existing shape's bottom edge
+    else if (Math.abs(movingBounds.top - existingBounds.bottom) <= snapDistance) {
+      snapY = existingBounds.bottom;
+      snapped = true;
+    }
+    // Moving shape's top edge to existing shape's top edge
+    else if (Math.abs(movingBounds.top - existingBounds.top) <= snapDistance) {
+      snapY = existingBounds.top;
+      snapped = true;
+    }
+    // Moving shape's bottom edge to existing shape's bottom edge
+    else if (Math.abs(movingBounds.bottom - existingBounds.bottom) <= snapDistance) {
+      snapY = existingBounds.bottom - SHAPE_CONFIG.size;
+      snapped = true;
+    }
+
+    // If we found a snap, break early for this shape
+    if (snapped) break;
+  }
+
+  return snapped ? { x: snapX, y: snapY } : null;
+};
 // Get snapped position based on shape center and grid
 const getSnappedPosition = (shapeCenter, canvasWidth, canvasHeight, shapeSize) => {
-  if (!SHAPE_CONFIG.grid.enabled) return null;
-  
-  const gridPoints = generateGridPoints(canvasWidth, canvasHeight, SHAPE_CONFIG.grid.spacing);
-  const nearestPoint = findNearestGridPoint(shapeCenter, gridPoints, SHAPE_CONFIG.grid.snapDistance);
-  
-  if (nearestPoint) {
-    // Convert grid point to shape position (top-left corner)
-    return {
-      x: Math.max(0, Math.min(nearestPoint.x - shapeSize / 2, canvasWidth - shapeSize)),
-      y: Math.max(0, Math.min(nearestPoint.y - shapeSize / 2, canvasHeight - shapeSize))
-    };
-  }
   
   return null;
 };
@@ -105,27 +178,43 @@ export default function App() {
   const getSnapPosition = (type) => SHAPE_CONFIG.snapOffsets[type] || { x: 0, y: 0 };
   const isSnapped = (x, y, snapX, snapY, tol = 5) => Math.abs(x - snapX) <= tol && Math.abs(y - snapY) <= tol;
 
-  const isColliding = (newX, newY, shapeId, shapeType) => {
-    const size = SHAPE_CONFIG.size;
-    const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
-    if (policy === "none") return false;
+const isColliding = (newX, newY, shapeId, shapeType, shapeRotation = 0) => {
+  const policy = SHAPE_CONFIG.collisionPolicies[shapeType];
+  if (policy === "none") return false;
 
-    return droppedShapes.some((shape) => {
-      if (shape.id === shapeId) return false;
-      const other = shape.position;
-      const overlapW = Math.max(0, Math.min(newX + size, other.x + size) - Math.max(newX, other.x));
-      const overlapH = Math.max(0, Math.min(newY + size, other.y + size) - Math.max(newY, other.y));
-      const overlapArea = overlapW * overlapH;
-      const totalArea = size * size;
-
-      if (isSnapped(other.x, other.y, getSnapPosition(shape.type).x, getSnapPosition(shape.type).y)) return false;
-
-      if (policy === "strict") return overlapArea > 0;
-      if (policy === "partial") return overlapArea > 0.5 * totalArea;
-      return false;
-    });
+  const newShape = {
+    position: { x: newX, y: newY },
+    type: shapeType,
+    rotation: shapeRotation,
+    id: shapeId
   };
 
+  return droppedShapes.some((existingShape) => {
+    if (existingShape.id === shapeId) return false;
+    
+    // Skip collision if the existing shape is in its snap position
+    const snapPos = getSnapPosition(existingShape.type);
+    if (isSnapped(existingShape.position.x, existingShape.position.y, snapPos.x, snapPos.y)) {
+      return false;
+    }
+
+    // Get canvas element for Path2D collision detection
+    const canvas = canvasRef.current?.querySelector("canvas");
+    
+    // Use enhanced collision detection with actual shape boundaries
+    const isColliding = canvas 
+      ? areShapesCollidingPath2D(newShape, existingShape, SHAPE_CONFIG.size, canvas)
+      : areShapesColliding(newShape, existingShape, SHAPE_CONFIG.size);
+    
+    // Apply policy-based filtering if there's a collision
+    if (isColliding && policy === "partial") {
+      // For partial policy, you could implement percentage-based overlap checking here
+      return true;
+    }
+    
+    return isColliding;
+  });
+};
   // Handle palette shape double-click
   const handlePaletteDoubleClick = (type, imageSrc) => (e) => {
     e.preventDefault();
@@ -273,19 +362,22 @@ const handlePendingShapeClick = (e) => {
       position: shouldClip ? getSnapPosition(pendingShape.type) : pendingShape.position,
       rotation: shouldClip ? 0 : pendingShape.rotation,
     };
-    console.log("overlap called");
-    const overlap = isOverlappingWithExisting(finalShape, droppedShapes, SHAPE_CONFIG.size);
+
+    // Use enhanced collision detection
+    const canvas = canvasRef.current?.querySelector("canvas");
+    const overlap = canvas 
+      ? isOverlappingWithExisting(finalShape, droppedShapes, SHAPE_CONFIG.size, canvas)
+      : isOverlappingWithExisting(finalShape, droppedShapes, SHAPE_CONFIG.size);
+      
     if (overlap) {
       console.log("Cannot place shape here. It overlaps an existing shape.");
       return;
     }
-    console.log("overlap result recieved");
 
     setDroppedShapes((prev) => [...prev, finalShape]);
     setPendingShape(null);
   }
 };
-
 
   // Check if a shape fits within the designated area
   const checkShapeFit = (shape) => {
@@ -321,135 +413,137 @@ const handlePendingShapeClick = (e) => {
     return fit && fitsRotation;
   };
 
-  const startGhostDrag = (type, imageSrc) => (e) => {
-    e.preventDefault();
-    setIsDraggingFromPalette(true);
-    const offset = { x: 50, y: 50 };
-    setGhostShape({
-      id: "ghost",
-      type,
-      imageSrc,
-      position: { x: e.clientX - offset.x, y: e.clientY - offset.y },
-    });
+const startGhostDrag = (type, imageSrc) => (e) => {
+  e.preventDefault();
+  setIsDraggingFromPalette(true);
+  const offset = { x: 50, y: 50 };
+  setGhostShape({
+    id: "ghost",
+    type,
+    imageSrc,
+    position: { x: e.clientX - offset.x, y: e.clientY - offset.y },
+  });
 
-    const handleMouseMove = (moveEvent) => {
-      setGhostShape((prev) =>
-        prev ? { ...prev, position: { x: moveEvent.clientX - offset.x, y: moveEvent.clientY - offset.y } } : null
-      );
+  const handleMouseMove = (moveEvent) => {
+    setGhostShape((prev) =>
+      prev ? { ...prev, position: { x: moveEvent.clientX - offset.x, y: moveEvent.clientY - offset.y } } : null
+    );
+  };
+const handleMouseUp = (upEvent) => {
+  const bounds = canvasRef.current.getBoundingClientRect();
+  const inside =
+    upEvent.clientX >= bounds.left &&
+    upEvent.clientX <= bounds.right &&
+    upEvent.clientY >= bounds.top &&
+    upEvent.clientY <= bounds.bottom;
+
+  if (inside) {
+    const id = Date.now();
+    const canvasX = upEvent.clientX - bounds.left - offset.x;
+    const canvasY = upEvent.clientY - bounds.top - offset.y;
+    const clampedX = Math.max(0, Math.min(canvasX, bounds.width - SHAPE_CONFIG.size));
+    const clampedY = Math.max(0, Math.min(canvasY, bounds.height - SHAPE_CONFIG.size));
+    
+    const shapeCenter = {
+      x: clampedX + SHAPE_CONFIG.size / 2,
+      y: clampedY + SHAPE_CONFIG.size / 2
     };
 
-    const handleMouseUp = (upEvent) => {
-      const bounds = canvasRef.current.getBoundingClientRect();
-      const inside =
-        upEvent.clientX >= bounds.left &&
-        upEvent.clientX <= bounds.right &&
-        upEvent.clientY >= bounds.top &&
-        upEvent.clientY <= bounds.bottom;
+    const snappedPosition = getSnappedPosition(shapeCenter, bounds.width, bounds.height, SHAPE_CONFIG.size);
+    const finalPosition = snappedPosition || { x: clampedX, y: clampedY };
+    
+    const tempShape = {
+      id,
+      type,
+      imageSrc,
+      position: finalPosition,
+      rotation: 0,
+    };
+    
+    const shouldClip = checkShapeFit(tempShape);
+    
+    // Use enhanced collision detection with canvas reference
+    const canvas = canvasRef.current?.querySelector("canvas");
+    const isOverlapping = canvas 
+      ? isOverlappingWithExisting(tempShape, droppedShapes, SHAPE_CONFIG.size, canvas)
+      : isOverlappingWithExisting(tempShape, droppedShapes, SHAPE_CONFIG.size);
 
-      if (inside) {
-        const id = Date.now();
-        const canvasX = upEvent.clientX - bounds.left - offset.x;
-        const canvasY = upEvent.clientY - bounds.top - offset.y;
-        const clampedX = Math.max(0, Math.min(canvasX, bounds.width - SHAPE_CONFIG.size));
-        const clampedY = Math.max(0, Math.min(canvasY, bounds.height - SHAPE_CONFIG.size));
-        
-        // Calculate shape center for grid snapping
-        const shapeCenter = {
-          x: clampedX + SHAPE_CONFIG.size / 2,
-          y: clampedY + SHAPE_CONFIG.size / 2
-        };
-
-        // Get snapped position
-        const snappedPosition = getSnappedPosition(shapeCenter, bounds.width, bounds.height, SHAPE_CONFIG.size);
-        const finalPosition = snappedPosition || { x: clampedX, y: clampedY };
-        
-        // Check if the shape should be clipped
-        const tempShape = {
-          type,
-          position: finalPosition,
-          rotation: 0,
-        };
-        const isOverlap = isOverlappingWithExisting(
-        finalPosition,
-        SHAPE_CONFIG.size,
-        droppedShapes,
-        ["hexagon"]
-      );
-
-        
-        const shouldClip = checkShapeFit(tempShape);
-        const isOverlapping = droppedShapes.some((existing) => {
-        const dx = Math.abs(existing.position.x - finalPosition.x);
-        const dy = Math.abs(existing.position.y - finalPosition.y);
-        return (
-          dx < SHAPE_CONFIG.size &&
-          dy < SHAPE_CONFIG.size
-        );
-      });
-
-      if (isOverlapping) {
-        // Prevent drop if overlapping
-        setGhostShape(null);
-        setIsDraggingFromPalette(false);
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-        return;
-      }
-        setDroppedShapes((prev) => [
-          ...prev,
-          {
-            id,
-            type,
-            imageSrc,
-            position: shouldClip ? getSnapPosition(type) : finalPosition,
-            rotation: shouldClip ? 0 : 0,
-            animate: shouldClip,
-            isSelected: false,
-          },
-        ]);
-      }
-
+    if (isOverlapping) {
       setGhostShape(null);
       setIsDraggingFromPalette(false);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
-    };
+      return;
+    }
+    
+    setDroppedShapes((prev) => [
+      ...prev,
+      {
+        id,
+        type,
+        imageSrc,
+        position: shouldClip ? getSnapPosition(type) : finalPosition,
+        rotation: shouldClip ? 0 : 0,
+        animate: shouldClip,
+        isSelected: false,
+      },
+    ]);
+  }
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
+  setGhostShape(null);
+  setIsDraggingFromPalette(false);
+  window.removeEventListener("mousemove", handleMouseMove);
+  window.removeEventListener("mouseup", handleMouseUp);
+};
 
+  window.addEventListener("mousemove", handleMouseMove);
+  window.addEventListener("mouseup", handleMouseUp);
+};
   const getAngle = (center, x, y) => Math.atan2(y - center.y, x - center.x) * (180 / Math.PI);
   const normalizeAngle = (angle) => ((angle % 360) + 360) % 360;
 
-  const handleMouseMove = useCallback((e) => {
-    if (!dragDataRef.current.isDragging) return;
-    const { shapeId, offset } = dragDataRef.current;
-    const shape = droppedShapes.find((s) => s.id === shapeId);
-    if (!shape || collisionPauseRef.current[shapeId]) return;
+ const handleMouseMove = useCallback((e) => {
+  if (!dragDataRef.current.isDragging) return;
+  const { shapeId, offset } = dragDataRef.current;
+  const shape = droppedShapes.find((s) => s.id === shapeId);
+  if (!shape || collisionPauseRef.current[shapeId]) return;
 
-    const canvasBounds = canvasRef.current.getBoundingClientRect();
-    let toX = e.clientX - canvasBounds.left - offset.x;
-    let toY = e.clientY - canvasBounds.top - offset.y;
-    const size = SHAPE_CONFIG.size;
+  const canvasBounds = canvasRef.current.getBoundingClientRect();
+  let toX = e.clientX - canvasBounds.left - offset.x;
+  let toY = e.clientY - canvasBounds.top - offset.y;
+  const size = SHAPE_CONFIG.size;
 
-    toX = Math.max(0, Math.min(toX, canvasBounds.width - size));
-    toY = Math.max(0, Math.min(toY, canvasBounds.height - size));
+  toX = Math.max(0, Math.min(toX, canvasBounds.width - size));
+  toY = Math.max(0, Math.min(toY, canvasBounds.height - size));
 
-    if (isColliding(toX, toY, shapeId, shape.type)) {
-      if (collisionPauseRef.current[shapeId]) return;
-      collisionPauseRef.current[shapeId] = true;
-      setTimeout(() => {
-        collisionPauseRef.current[shapeId] = false;
-      }, 10000);
-      return;
-    }
+  // Create temporary shape for snapping calculation
+  const tempShape = {
+    ...shape,
+    position: { x: toX, y: toY }
+  };
 
-    visualPositionRef.current[shapeId] = { x: toX, y: toY };
-    setDroppedShapes((prev) =>
-      prev.map((s) => (s.id === shapeId ? { ...s, position: { x: toX, y: toY } } : s))
-    );
-  }, [droppedShapes]);
+  // Check for edge-to-edge snapping
+  const snappedPosition = getEdgeSnappedPosition(tempShape, droppedShapes, 10);
+  if (snappedPosition) {
+    toX = snappedPosition.x;
+    toY = snappedPosition.y;
+  }
+
+  // Use enhanced collision detection
+  if (isColliding(toX, toY, shapeId, shape.type, shape.rotation)) {
+    if (collisionPauseRef.current[shapeId]) return;
+    collisionPauseRef.current[shapeId] = true;
+    setTimeout(() => {
+      collisionPauseRef.current[shapeId] = false;
+    }, 100);
+    return;
+  }
+
+  visualPositionRef.current[shapeId] = { x: toX, y: toY };
+  setDroppedShapes((prev) =>
+    prev.map((s) => (s.id === shapeId ? { ...s, position: { x: toX, y: toY } } : s))
+  );
+}, [droppedShapes]);
 
  // Modified handleMouseUp function - replace the existing one
 const handleMouseUp = useCallback(() => {
@@ -488,22 +582,28 @@ const handleMouseUp = useCallback(() => {
     let updated = prevShapes.map((s) => {
       if (s.id !== shapeId) return s;
       
-      // Only apply grid snapping if the shape has no rotation or minimal rotation
+      // Check for edge-to-edge snapping first
+      const snappedPosition = getEdgeSnappedPosition(s, prevShapes.filter(shape => shape.id !== shapeId), 10);
+      
+      // Only apply grid snapping if the shape has no rotation or minimal rotation AND no edge snapping occurred
       const normalizedRotation = normalizeAngle(s.rotation);
       const isNearZeroRotation = normalizedRotation <= SHAPE_CONFIG.rotationTolerance || 
                                 normalizedRotation >= 360 - SHAPE_CONFIG.rotationTolerance;
       
       let finalPosition = s.position;
       
-      // Apply grid snapping only for non-rotated shapes
-      if (isNearZeroRotation) {
+      if (snappedPosition) {
+        // Use edge-snapped position
+        finalPosition = snappedPosition;
+      } else if (isNearZeroRotation) {
+        // Apply grid snapping only for non-rotated shapes if no edge snapping occurred
         const shapeCenter = {
           x: s.position.x + SHAPE_CONFIG.size / 2,
           y: s.position.y + SHAPE_CONFIG.size / 2
         };
         
-        const snappedPosition = getSnappedPosition(shapeCenter, canvasBounds.width, canvasBounds.height, SHAPE_CONFIG.size);
-        finalPosition = snappedPosition || s.position;
+        const gridSnappedPosition = getSnappedPosition(shapeCenter, canvasBounds.width, canvasBounds.height, SHAPE_CONFIG.size);
+        finalPosition = gridSnappedPosition || s.position;
       }
       
       const updatedShape = { ...s, position: finalPosition };
@@ -519,7 +619,7 @@ const handleMouseUp = useCallback(() => {
       return updatedShape;
     });
 
-    // Rest of the function remains the same...
+    // Rest of the collision detection logic remains the same...
     const toRemove = new Set();
     const flashSet = new Set();
     const shapesByType = new Map();
@@ -591,6 +691,7 @@ const handleMouseUp = useCallback(() => {
   };
   setDraggingShapeId(null);
 }, [normalizeAngle]);
+
 
   const handleRotateMove = useCallback((x, y) => {
     if (!rotationDataRef.current.isRotating) return;
